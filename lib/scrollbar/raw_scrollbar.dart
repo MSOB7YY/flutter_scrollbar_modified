@@ -935,7 +935,7 @@ class RawScrollbarModified extends StatefulWidget {
     this.pressDuration = Duration.zero,
     this.notificationPredicate = defaultScrollNotificationPredicate,
     this.interactive,
-    this.tapToScroll = true,
+    this.tapToScroll = false,
     this.scrollbarOrientation,
     this.mainAxisMargin = 0.0,
     this.crossAxisMargin = 0.0,
@@ -1342,7 +1342,7 @@ class RawScrollbarModified extends StatefulWidget {
 
   /// Wether to scroll upon tapping anywhere in the track.
   ///
-  /// Defaults to true.
+  /// Defaults to false.
   final bool tapToScroll;
 
   /// {@macro flutter.widgets.Scrollbar.scrollbarOrientation}
