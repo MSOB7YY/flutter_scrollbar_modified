@@ -936,6 +936,7 @@ class RawScrollbarModified extends StatefulWidget {
     this.notificationPredicate = defaultScrollNotificationPredicate,
     this.interactive,
     this.tapToScroll = false,
+    this.allowDraggingOutOfRange = false,
     this.onThumbLongPressStart,
     this.onThumbLongPressEnd,
     this.scrollbarOrientation,
@@ -1347,6 +1348,8 @@ class RawScrollbarModified extends StatefulWidget {
   /// Defaults to false.
   final bool tapToScroll;
 
+  final bool allowDraggingOutOfRange;
+
   final VoidCallback? onThumbLongPressStart;
 
   final VoidCallback? onThumbLongPressEnd;
@@ -1671,6 +1674,10 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
           // We can only drag the scrollbar into overscroll on mobile
           // platforms, and only then if the physics allow it.
           break;
+      }
+      if (!widget.allowDraggingOutOfRange) {
+        if (newPosition < position.minScrollExtent) return;
+        if (newPosition > position.maxScrollExtent) return;
       }
       position.jumpTo(newPosition);
     }
