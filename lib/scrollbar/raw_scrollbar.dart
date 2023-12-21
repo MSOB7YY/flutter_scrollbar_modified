@@ -936,6 +936,8 @@ class RawScrollbarModified extends StatefulWidget {
     this.notificationPredicate = defaultScrollNotificationPredicate,
     this.interactive,
     this.tapToScroll = false,
+    this.onThumbLongPressStart,
+    this.onThumbLongPressEnd,
     this.scrollbarOrientation,
     this.mainAxisMargin = 0.0,
     this.crossAxisMargin = 0.0,
@@ -1345,6 +1347,10 @@ class RawScrollbarModified extends StatefulWidget {
   /// Defaults to false.
   final bool tapToScroll;
 
+  final VoidCallback? onThumbLongPressStart;
+
+  final VoidCallback? onThumbLongPressEnd;
+
   /// {@macro flutter.widgets.Scrollbar.scrollbarOrientation}
   final ScrollbarOrientation? scrollbarOrientation;
 
@@ -1711,6 +1717,7 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
   @mustCallSuper
   void handleThumbPressStart(Offset localPosition) {
     assert(_debugCheckHasValidScrollPosition());
+    widget.onThumbLongPressStart?.call();
     _cachedController = _effectiveScrollController;
     final Axis? direction = getScrollbarDirection();
     if (direction == null) {
@@ -1751,6 +1758,7 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
   @mustCallSuper
   void handleThumbPressEnd(Offset localPosition, Velocity velocity) {
     assert(_debugCheckHasValidScrollPosition());
+    widget.onThumbLongPressEnd?.call();
     _thumbDragging = false;
     final Axis? direction = getScrollbarDirection();
     if (direction == null) {
