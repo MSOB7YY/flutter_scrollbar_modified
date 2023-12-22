@@ -1675,11 +1675,12 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
           // platforms, and only then if the physics allow it.
           break;
       }
-      if (!widget.allowDraggingOutOfRange) {
-        if (newPosition < position.minScrollExtent) return;
-        if (newPosition > position.maxScrollExtent) return;
+
+      if (widget.allowDraggingOutOfRange) {
+        position.jumpTo(newPosition);
+      } else {
+        position.jumpTo(newPosition.clamp(position.minScrollExtent, position.maxScrollExtent));
       }
-      position.jumpTo(newPosition);
     }
   }
 
