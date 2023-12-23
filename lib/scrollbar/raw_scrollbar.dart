@@ -1777,6 +1777,8 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
     _lastDragUpdateOffset = null;
     _startDragThumbOffset = null;
     _cachedController = null;
+
+    _cachedController?.position.notifyListeners();
   }
 
   void _handleTrackTapDown(TapDownDetails details) {
