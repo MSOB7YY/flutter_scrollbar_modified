@@ -88,6 +88,7 @@ class CupertinoScrollbar extends RawScrollbarModified {
     bool? isAlwaysShown,
     super.tapToScroll,
     super.allowDraggingOutOfRange,
+    super.scrollStep,
     super.onThumbLongPressStart,
     super.onThumbLongPressEnd,
   })  : assert(thickness < double.infinity),
