@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart' show Theme;
 import 'package:flutter/services.dart';
 import 'package:flutter_scrollbar_modified/scrollbar/raw_scrollbar.dart';
 
@@ -14,10 +15,8 @@ const Duration _kScrollbarFadeDuration = Duration(milliseconds: 250);
 const Duration _kScrollbarResizeDuration = Duration(milliseconds: 100);
 
 // Extracted from iOS 13.1 beta using Debug View Hierarchy.
-const Color _kScrollbarColor = CupertinoDynamicColor.withBrightness(
-  color: Color(0x59000000),
-  darkColor: Color(0x80FFFFFF),
-);
+const Color _kScrollbarColorLight = Color(0x59000000);
+const Color _kScrollbarColorDark = Color(0x70FFFFFF);
 
 // This is the amount of space from the top of a vertical scrollbar to the
 // top edge of the scrollable, measured when the vertical scrollbar overscrolls
@@ -161,10 +160,14 @@ class _CupertinoScrollbarState extends RawScrollbarModifiedState<CupertinoScroll
     });
   }
 
+  bool _isDark(BuildContext context) {
+    return Theme.of(context).brightness == Brightness.dark;
+  }
+
   @override
   void updateScrollbarPainter() {
     scrollbarPainter
-      ..color = CupertinoDynamicColor.resolve(_kScrollbarColor, context)
+      ..color = _isDark(context) ? _kScrollbarColorDark : _kScrollbarColorLight
       ..textDirection = Directionality.of(context)
       ..thickness = _thickness
       ..mainAxisMargin = _kScrollbarMainAxisMargin
