@@ -5,6 +5,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart' show Theme;
 import 'package:flutter/services.dart';
+
 import 'package:flutter_scrollbar_modified/scrollbar/raw_scrollbar.dart';
 
 // All values eyeballed.
@@ -86,6 +87,7 @@ class CupertinoScrollbar extends RawScrollbarModified {
     )
     bool? isAlwaysShown,
     super.tapToScroll,
+    super.showOnStart,
     super.allowDraggingOutOfRange,
     super.scrollStep,
     super.onThumbLongPressStart,

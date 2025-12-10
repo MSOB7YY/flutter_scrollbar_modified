@@ -5,10 +5,10 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart';
 
 const double _kMinThumbExtent = 18.0;
 const double _kMinInteractiveSize = 48.0;
@@ -936,6 +936,7 @@ class RawScrollbarModified extends StatefulWidget {
     this.notificationPredicate = defaultScrollNotificationPredicate,
     this.interactive,
     this.tapToScroll = false,
+    this.showOnStart = false,
     this.allowDraggingOutOfRange = false,
     this.scrollStep = 0,
     this.onThumbLongPressStart,
@@ -1349,6 +1350,9 @@ class RawScrollbarModified extends StatefulWidget {
   /// Defaults to false.
   final bool tapToScroll;
 
+  /// Flash the Scrollbar initially
+  final bool showOnStart;
+
   final bool allowDraggingOutOfRange;
 
   final double scrollStep;
@@ -1474,6 +1478,14 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
       minLength: widget.minThumbLength,
       minOverscrollLength: widget.minOverscrollLength ?? widget.minThumbLength,
     );
+
+    if (widget.showOnStart) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _fadeoutAnimationController.forward();
+        _fadeoutTimer?.cancel();
+        _maybeStartFadeoutTimer();
+      });
+    }
   }
 
   @override
