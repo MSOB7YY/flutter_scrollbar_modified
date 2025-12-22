@@ -937,6 +937,7 @@ class RawScrollbarModified extends StatefulWidget {
     this.interactive,
     this.tapToScroll = false,
     this.showOnStart = false,
+    this.ignorePhysics = true,
     this.allowDraggingOutOfRange = false,
     this.scrollStep = 0,
     this.onThumbLongPressStart,
@@ -1352,6 +1353,8 @@ class RawScrollbarModified extends StatefulWidget {
 
   /// Flash the Scrollbar initially
   final bool showOnStart;
+
+  final bool ignorePhysics;
 
   final bool allowDraggingOutOfRange;
 
@@ -1771,7 +1774,7 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
       return;
     }
     final ScrollPosition position = _cachedController!.position;
-    if (!position.physics.shouldAcceptUserOffset(position)) {
+    if (!widget.ignorePhysics && !position.physics.shouldAcceptUserOffset(position)) {
       return;
     }
     final Axis? direction = getScrollbarDirection();
@@ -1811,7 +1814,7 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
     _cachedController = _effectiveScrollController;
 
     final ScrollPosition position = _cachedController!.position;
-    if (!position.physics.shouldAcceptUserOffset(position)) {
+    if (!widget.ignorePhysics && !position.physics.shouldAcceptUserOffset(position)) {
       return;
     }
 
@@ -2076,7 +2079,7 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
     if ((scrollbarPainter.hitTest(event.localPosition) ?? false) && _cachedController != null && _cachedController!.hasClients && (!_thumbDragging || kIsWeb)) {
       final ScrollPosition position = _cachedController!.position;
       if (event is PointerScrollEvent) {
-        if (!position.physics.shouldAcceptUserOffset(position)) {
+        if (!widget.ignorePhysics && !position.physics.shouldAcceptUserOffset(position)) {
           return;
         }
         final double delta = _pointerSignalEventDelta(event);
