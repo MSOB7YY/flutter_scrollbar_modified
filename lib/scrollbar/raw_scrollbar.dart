@@ -11,7 +11,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 const double _kMinThumbExtent = 18.0;
-const double _kMinInteractiveSize = 48.0;
+const double _kMinInteractiveSize = 60.0;
 const double _kScrollbarThickness = 6.0;
 const Duration _kScrollbarFadeDuration = Duration(milliseconds: 300);
 const Duration _kScrollbarTimeToFade = Duration(milliseconds: 600);
@@ -53,6 +53,7 @@ class ScrollbarPainter extends ChangeNotifier implements CustomPainter {
     Color trackBorderColor = const Color(0x00000000),
     TextDirection? textDirection,
     double thickness = _kScrollbarThickness,
+    double minInteractiveSize = _kMinInteractiveSize,
     EdgeInsets padding = EdgeInsets.zero,
     double mainAxisMargin = 0.0,
     double crossAxisMargin = 0.0,
@@ -71,6 +72,7 @@ class ScrollbarPainter extends ChangeNotifier implements CustomPainter {
         _color = color,
         _textDirection = textDirection,
         _thickness = thickness,
+        _minInteractiveSize = minInteractiveSize,
         _radius = radius,
         _shape = shape,
         _padding = padding,
@@ -160,6 +162,17 @@ class ScrollbarPainter extends ChangeNotifier implements CustomPainter {
     }
 
     _thickness = value;
+    notifyListeners();
+  }
+
+  double get minInteractiveSize => _minInteractiveSize;
+  double _minInteractiveSize;
+  set minInteractiveSize(double value) {
+    if (minInteractiveSize == value) {
+      return;
+    }
+
+    _minInteractiveSize = value;
     notifyListeners();
   }
 
@@ -686,7 +699,7 @@ class ScrollbarPainter extends ChangeNotifier implements CustomPainter {
 
     final Rect interactiveRect = _trackRect!;
     final Rect paddedRect = interactiveRect.expandToInclude(
-      Rect.fromCircle(center: _thumbRect!.center, radius: _kMinInteractiveSize / 2),
+      Rect.fromCircle(center: _thumbRect!.center, radius: _minInteractiveSize / 2),
     );
 
     // The scrollbar is not able to be hit when transparent - except when
@@ -729,19 +742,10 @@ class ScrollbarPainter extends ChangeNotifier implements CustomPainter {
       return false;
     }
 
-    switch (kind) {
-      case PointerDeviceKind.touch:
-      case PointerDeviceKind.trackpad:
-        final Rect touchThumbRect = _thumbRect!.expandToInclude(
-          Rect.fromCircle(center: _thumbRect!.center, radius: _kMinInteractiveSize / 2),
-        );
-        return touchThumbRect.contains(position);
-      case PointerDeviceKind.mouse:
-      case PointerDeviceKind.stylus:
-      case PointerDeviceKind.invertedStylus:
-      case PointerDeviceKind.unknown:
-        return _thumbRect!.contains(position);
-    }
+    final Rect touchThumbRect = _thumbRect!.expandToInclude(
+      Rect.fromCircle(center: _thumbRect!.center, radius: _minInteractiveSize / 2),
+    );
+    return touchThumbRect.contains(position);
   }
 
   @override
@@ -923,6 +927,7 @@ class RawScrollbarModified extends StatefulWidget {
     this.shape,
     this.radius,
     this.thickness,
+    this.minInteractiveSize,
     this.thumbColor,
     this.minThumbLength = _kMinThumbExtent,
     this.minOverscrollLength,
@@ -935,7 +940,7 @@ class RawScrollbarModified extends StatefulWidget {
     this.pressDuration = Duration.zero,
     this.notificationPredicate = defaultScrollNotificationPredicate,
     this.interactive,
-    this.tapToScroll = false,
+    this.tapToScroll,
     this.showOnStart = false,
     this.ignorePhysics = true,
     this.allowDraggingOutOfRange = false,
@@ -1230,6 +1235,8 @@ class RawScrollbarModified extends StatefulWidget {
   /// If null, will default to 6.0 pixels.
   final double? thickness;
 
+  final double? minInteractiveSize;
+
   /// The color of the scrollbar thumb.
   ///
   /// If null, defaults to Color(0x66BCBCBC).
@@ -1349,7 +1356,7 @@ class RawScrollbarModified extends StatefulWidget {
   /// Wether to scroll upon tapping anywhere in the track.
   ///
   /// Defaults to false.
-  final bool tapToScroll;
+  final bool Function()? tapToScroll;
 
   /// Flash the Scrollbar initially
   final bool showOnStart;
@@ -1471,6 +1478,8 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
     scrollbarPainter = ScrollbarPainter(
       color: widget.thumbColor ?? const Color(0x66BCBCBC),
       fadeoutOpacityAnimation: _fadeoutOpacityAnimation,
+      padding: const EdgeInsets.symmetric(horizontal: 2.0),
+      minInteractiveSize: widget.minInteractiveSize ?? _kMinInteractiveSize,
       thickness: widget.thickness ?? _kScrollbarThickness,
       radius: widget.radius,
       trackRadius: widget.trackRadius,
@@ -1806,7 +1815,7 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
   }
 
   void _handleTrackTapDown(TapDownDetails details) {
-    if (!widget.tapToScroll) {
+    if (widget.tapToScroll?.call() != true) {
       return;
     }
     // The Scrollbar should page towards the position of the tap on the track.
@@ -1818,33 +1827,21 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
       return;
     }
 
-    // Determines the scroll direction.
-    final AxisDirection scrollDirection;
+    double tapPosition = 0;
 
     switch (position.axisDirection) {
       case AxisDirection.up:
       case AxisDirection.down:
-        if (details.localPosition.dy > scrollbarPainter._thumbOffset) {
-          scrollDirection = AxisDirection.down;
-        } else {
-          scrollDirection = AxisDirection.up;
-        }
+        tapPosition = details.localPosition.dy;
       case AxisDirection.left:
       case AxisDirection.right:
-        if (details.localPosition.dx > scrollbarPainter._thumbOffset) {
-          scrollDirection = AxisDirection.right;
-        } else {
-          scrollDirection = AxisDirection.left;
-        }
+        tapPosition = details.localPosition.dx;
     }
 
-    final ScrollableState? state = Scrollable.maybeOf(position.context.notificationContext!);
-    final ScrollIntent intent = ScrollIntent(direction: scrollDirection, type: ScrollIncrementType.page);
-    assert(state != null);
-    final double scrollIncrement = ScrollAction.getDirectionalIncrement(state!, intent);
+    final destination = (tapPosition / position.viewportDimension) * position.extentTotal;
 
     _cachedController!.position.moveTo(
-      _cachedController!.position.pixels + scrollIncrement,
+      destination, // old: _cachedController!.position.pixels + scrollIncrement
       duration: const Duration(milliseconds: 100),
       curve: Curves.easeInOut,
     );

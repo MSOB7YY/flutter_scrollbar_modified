@@ -76,6 +76,7 @@ class CupertinoScrollbar extends RawScrollbarModified {
     super.controller,
     bool? thumbVisibility,
     double super.thickness = defaultThickness,
+    double super.minInteractiveSize = defaultMinInteractiveSize,
     this.thicknessWhileDragging = defaultThicknessWhileDragging,
     Radius super.radius = defaultRadius,
     this.radiusWhileDragging = defaultRadiusWhileDragging,
@@ -86,6 +87,7 @@ class CupertinoScrollbar extends RawScrollbarModified {
       'This feature was deprecated after v2.9.0-1.0.pre.',
     )
     bool? isAlwaysShown,
+    super.pressDuration = const Duration(milliseconds: 80),
     super.tapToScroll,
     super.showOnStart,
     super.allowDraggingOutOfRange,
@@ -102,12 +104,13 @@ class CupertinoScrollbar extends RawScrollbarModified {
           thumbVisibility: isAlwaysShown ?? thumbVisibility ?? false,
           fadeDuration: _kScrollbarFadeDuration,
           timeToFade: _kScrollbarTimeToFade,
-          pressDuration: const Duration(milliseconds: 100),
           notificationPredicate: notificationPredicate ?? defaultScrollNotificationPredicate,
         );
 
   /// Default value for [thickness] if it's not specified in [CupertinoScrollbar].
   static const double defaultThickness = 3;
+
+  static const double defaultMinInteractiveSize = 60.0;
 
   /// Default value for [thicknessWhileDragging] if it's not specified in
   /// [CupertinoScrollbar].
