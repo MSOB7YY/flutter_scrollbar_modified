@@ -89,6 +89,7 @@ class CupertinoScrollbar extends RawScrollbarModified {
     bool? isAlwaysShown,
     super.pressDuration = const Duration(milliseconds: 80),
     super.tapToScroll,
+    super.enhancedDragToScroll,
     super.showOnStart,
     super.allowDraggingOutOfRange,
     super.scrollStep,

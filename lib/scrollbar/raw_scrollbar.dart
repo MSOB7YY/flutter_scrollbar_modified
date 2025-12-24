@@ -684,7 +684,7 @@ class ScrollbarPainter extends ChangeNotifier implements CustomPainter {
   /// interact with the scrollbar by presenting it to the mouse for interaction
   /// based on proximity. When `forHover` is true, the larger hit test area will
   /// be used.
-  bool hitTestInteractive(Offset position, PointerDeviceKind kind, {bool forHover = false}) {
+  bool hitTestInteractive(Offset position, PointerDeviceKind kind, {bool forHover = false, bool forceLargeInteractive = false}) {
     if (_trackRect == null) {
       // We have not computed the scrollbar position yet.
       return false;
@@ -710,6 +710,10 @@ class ScrollbarPainter extends ChangeNotifier implements CustomPainter {
         return paddedRect.contains(position);
       }
       return false;
+    }
+
+    if (forceLargeInteractive) {
+      return paddedRect.contains(position);
     }
 
     switch (kind) {
@@ -941,6 +945,7 @@ class RawScrollbarModified extends StatefulWidget {
     this.notificationPredicate = defaultScrollNotificationPredicate,
     this.interactive,
     this.tapToScroll,
+    this.enhancedDragToScroll,
     this.showOnStart = false,
     this.ignorePhysics = true,
     this.allowDraggingOutOfRange = false,
@@ -1357,6 +1362,11 @@ class RawScrollbarModified extends StatefulWidget {
   ///
   /// Defaults to false.
   final bool Function()? tapToScroll;
+
+  /// Wether to scroll upon dragging anywhere in the track.
+  ///
+  /// Defaults to false.
+  final bool Function()? enhancedDragToScroll;
 
   /// Flash the Scrollbar initially
   final bool showOnStart;
@@ -1814,7 +1824,7 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
     _cachedController?.position.notifyListeners();
   }
 
-  void _handleTrackTapDown(TapDownDetails details) {
+  void _handleTrackTapUp(TapUpDetails details) {
     if (widget.tapToScroll?.call() != true) {
       return;
     }
@@ -1842,8 +1852,8 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
 
     _cachedController!.position.moveTo(
       destination, // old: _cachedController!.position.pixels + scrollIncrement
-      duration: const Duration(milliseconds: 100),
-      curve: Curves.easeInOut,
+      duration: const Duration(milliseconds: 150),
+      curve: Curves.easeInOutQuart,
     );
   }
 
@@ -1941,6 +1951,7 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
         debugOwner: this,
         customPaintKey: _scrollbarPainterKey,
         duration: widget.pressDuration,
+        allowAnywhere: widget.enhancedDragToScroll,
       ),
       (_ThumbPressGestureRecognizer instance) {
         instance.onLongPress = handleThumbPress;
@@ -1956,7 +1967,7 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
         customPaintKey: _scrollbarPainterKey,
       ),
       (_TrackTapGestureRecognizer instance) {
-        instance.onTapDown = _handleTrackTapDown;
+        instance.onTapUp = _handleTrackTapUp;
       },
     );
 
@@ -2161,10 +2172,12 @@ class _ThumbPressGestureRecognizer extends LongPressGestureRecognizer {
   _ThumbPressGestureRecognizer({
     required Object super.debugOwner,
     required GlobalKey customPaintKey,
+    required this.allowAnywhere,
     required super.duration,
   }) : _customPaintKey = customPaintKey;
 
   final GlobalKey _customPaintKey;
+  final bool Function()? allowAnywhere;
 
   @override
   bool isPointerAllowed(PointerDownEvent event) {
@@ -2181,7 +2194,12 @@ class _ThumbPressGestureRecognizer extends LongPressGestureRecognizer {
     final CustomPaint customPaint = customPaintKey.currentContext!.widget as CustomPaint;
     final ScrollbarPainter painter = customPaint.foregroundPainter! as ScrollbarPainter;
     final Offset localOffset = _getLocalOffset(customPaintKey, offset);
-    return painter.hitTestOnlyThumbInteractive(localOffset, kind);
+    final allowWholeTrack = allowAnywhere?.call() == true;
+    if (allowWholeTrack) {
+      return painter.hitTestInteractive(localOffset, kind, forceLargeInteractive: true);
+    } else {
+      return painter.hitTestOnlyThumbInteractive(localOffset, kind);
+    }
   }
 }
 
