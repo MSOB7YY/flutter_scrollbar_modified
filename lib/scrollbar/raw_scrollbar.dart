@@ -64,6 +64,8 @@ class ScrollbarPainter extends ChangeNotifier implements CustomPainter {
     double? minOverscrollLength,
     ScrollbarOrientation? scrollbarOrientation,
     bool ignorePointer = false,
+    bool Function()? tapToScroll,
+    bool Function()? enhancedDragToScroll,
   })  : assert(radius == null || shape == null),
         assert(minLength >= 0),
         assert(minOverscrollLength == null || minOverscrollLength <= minLength),
@@ -84,7 +86,9 @@ class ScrollbarPainter extends ChangeNotifier implements CustomPainter {
         _trackRadius = trackRadius,
         _scrollbarOrientation = scrollbarOrientation,
         _minOverscrollLength = minOverscrollLength ?? minLength,
-        _ignorePointer = ignorePointer {
+        _ignorePointer = ignorePointer,
+        _tapToScroll = tapToScroll,
+        _enhancedDragToScroll = enhancedDragToScroll {
     fadeoutOpacityAnimation.addListener(notifyListeners);
   }
 
@@ -353,6 +357,28 @@ class ScrollbarPainter extends ChangeNotifier implements CustomPainter {
     }
 
     _ignorePointer = value;
+    notifyListeners();
+  }
+
+  bool Function()? get tapToScroll => _tapToScroll;
+  bool Function()? _tapToScroll;
+  set tapToScroll(bool Function()? value) {
+    if (tapToScroll == value) {
+      return;
+    }
+
+    _tapToScroll = value;
+    notifyListeners();
+  }
+
+  bool Function()? get enhancedDragToScroll => _enhancedDragToScroll;
+  bool Function()? _enhancedDragToScroll;
+  set enhancedDragToScroll(bool Function()? value) {
+    if (enhancedDragToScroll == value) {
+      return;
+    }
+
+    _enhancedDragToScroll = value;
     notifyListeners();
   }
 
@@ -672,7 +698,11 @@ class ScrollbarPainter extends ChangeNotifier implements CustomPainter {
       return false;
     }
 
-    return _trackRect!.contains(position!);
+    if (tapToScroll?.call() == true) {
+      return _trackRect!.contains(position!);
+    }
+
+    return false;
   }
 
   /// Same as hitTest, but includes some padding when the [PointerEvent] is
@@ -1499,6 +1529,8 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
       crossAxisMargin: widget.crossAxisMargin,
       minLength: widget.minThumbLength,
       minOverscrollLength: widget.minOverscrollLength ?? widget.minThumbLength,
+      tapToScroll: widget.tapToScroll,
+      enhancedDragToScroll: widget.enhancedDragToScroll,
     );
 
     if (widget.showOnStart) {
