@@ -714,7 +714,7 @@ class ScrollbarPainter extends ChangeNotifier implements CustomPainter {
   /// interact with the scrollbar by presenting it to the mouse for interaction
   /// based on proximity. When `forHover` is true, the larger hit test area will
   /// be used.
-  bool hitTestInteractive(Offset position, PointerDeviceKind kind, {bool forHover = false, bool forceLargeInteractive = false}) {
+  bool hitTestInteractive(Offset position, PointerDeviceKind kind, {bool forHover = false}) {
     if (_trackRect == null) {
       // We have not computed the scrollbar position yet.
       return false;
@@ -740,10 +740,6 @@ class ScrollbarPainter extends ChangeNotifier implements CustomPainter {
         return paddedRect.contains(position);
       }
       return false;
-    }
-
-    if (forceLargeInteractive) {
-      return paddedRect.contains(position);
     }
 
     switch (kind) {
@@ -776,10 +772,22 @@ class ScrollbarPainter extends ChangeNotifier implements CustomPainter {
       return false;
     }
 
-    final Rect touchThumbRect = _thumbRect!.expandToInclude(
-      Rect.fromCircle(center: _thumbRect!.center, radius: _minInteractiveSize / 2),
-    );
-    return touchThumbRect.contains(position);
+    switch (kind) {
+      case PointerDeviceKind.touch:
+      case PointerDeviceKind.trackpad:
+        final Rect touchThumbRect = _thumbRect!.expandToInclude(
+          Rect.fromCircle(center: _thumbRect!.center, radius: _minInteractiveSize / 2),
+        );
+        return touchThumbRect.contains(position);
+      case PointerDeviceKind.mouse:
+      case PointerDeviceKind.stylus:
+      case PointerDeviceKind.invertedStylus:
+      case PointerDeviceKind.unknown:
+        final Rect mouseThumbRect = _thumbRect!.expandToInclude(
+          Rect.fromCircle(center: _thumbRect!.center, radius: _minInteractiveSize / 8),
+        );
+        return mouseThumbRect.contains(position);
+    }
   }
 
   @override
@@ -2228,7 +2236,7 @@ class _ThumbPressGestureRecognizer extends LongPressGestureRecognizer {
     final Offset localOffset = _getLocalOffset(customPaintKey, offset);
     final allowWholeTrack = allowAnywhere?.call() == true;
     if (allowWholeTrack) {
-      return painter.hitTestInteractive(localOffset, kind, forceLargeInteractive: true);
+      return painter.hitTestInteractive(localOffset, kind);
     } else {
       return painter.hitTestOnlyThumbInteractive(localOffset, kind);
     }
