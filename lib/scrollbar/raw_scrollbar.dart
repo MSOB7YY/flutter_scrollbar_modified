@@ -1849,6 +1849,12 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
   @mustCallSuper
   void handleThumbPressEnd(Offset localPosition, Velocity velocity) {
     assert(_debugCheckHasValidScrollPosition());
+    handleThumbPressCancel();
+  }
+
+  @protected
+  @mustCallSuper
+  void handleThumbPressCancel() {
     widget.onThumbLongPressEnd?.call();
     _thumbDragging = false;
     final Axis? direction = getScrollbarDirection();
@@ -1859,9 +1865,8 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
     _startDragScrollbarAxisOffset = null;
     _lastDragUpdateOffset = null;
     _startDragThumbOffset = null;
-    _cachedController = null;
-
     _cachedController?.position.notifyListeners();
+    _cachedController = null;
   }
 
   void _handleTrackTapUp(TapUpDetails details) {
@@ -1998,6 +2003,7 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
         instance.onLongPressStart = (LongPressStartDetails details) => handleThumbPressStart(details.localPosition);
         instance.onLongPressMoveUpdate = (LongPressMoveUpdateDetails details) => handleThumbPressUpdate(details.localPosition);
         instance.onLongPressEnd = (LongPressEndDetails details) => handleThumbPressEnd(details.localPosition, details.velocity);
+        instance.onLongPressCancel = handleThumbPressCancel;
       },
     );
 
@@ -2147,6 +2153,10 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
     _fadeoutAnimationController.dispose();
     _fadeoutTimer?.cancel();
     scrollbarPainter.dispose();
+    if (_thumbDragging) {
+      _thumbDragging = false;
+      widget.onThumbLongPressEnd?.call();
+    }
     super.dispose();
   }
 
