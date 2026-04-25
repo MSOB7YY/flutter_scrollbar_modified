@@ -1781,11 +1781,9 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
   /// current scroll controller does not have any attached positions.
   @protected
   Axis? getScrollbarDirection() {
-    assert(_cachedController != null);
-    if (_cachedController!.hasClients) {
-      return _cachedController!.position.axis;
-    }
-    return null;
+    final c = _cachedController;
+    if (c == null) return null;
+    return c.positions.lastOrNull?.axis;
   }
 
   /// Handler called when a press on the scrollbar thumb has been recognized.
