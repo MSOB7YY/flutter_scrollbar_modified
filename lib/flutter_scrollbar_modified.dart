@@ -1,3 +1,4 @@
 library flutter_scrollbar_modified;
 
 export 'scrollbar/cupertino_scrollbar.dart';
+export 'scrollbar/raw_scrollbar.dart' show ScrollbarThumbLabelResolver;

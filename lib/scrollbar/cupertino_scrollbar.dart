@@ -95,6 +95,7 @@ class CupertinoScrollbar extends RawScrollbarModified {
     super.scrollStep,
     super.onThumbLongPressStart,
     super.onThumbLongPressEnd,
+    super.thumbLabel,
   })  : assert(thickness < double.infinity),
         assert(thicknessWhileDragging < double.infinity),
         assert(

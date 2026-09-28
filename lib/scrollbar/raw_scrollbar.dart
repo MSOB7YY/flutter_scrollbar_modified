@@ -9,12 +9,31 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 const double _kMinThumbExtent = 18.0;
 const double _kMinInteractiveSize = 60.0;
 const double _kScrollbarThickness = 6.0;
 const Duration _kScrollbarFadeDuration = Duration(milliseconds: 300);
 const Duration _kScrollbarTimeToFade = Duration(milliseconds: 600);
+
+const double _kThumbLabelBubbleSize = 56.0;
+const double _kThumbLabelHorizontalPadding = 16.0;
+const double _kThumbLabelEdgeOffset = 28.0;
+const double _kThumbLabelFontSize = 28.0;
+const double _kThumbLabelLongFontSize = _kThumbLabelFontSize * 0.6;
+const int _kThumbLabelMaxShortLength = 2;
+const double _kThumbLabelSlideFraction = 0.4;
+const double _kThumbLabelPopStrength = 0.14;
+const double _kThumbLabelAccentOpacity = 0.75;
+const double _kThumbLabelShadowElevation = 3.0;
+const double _kThumbLabelChangeInterruptedFrom = 0.45;
+const Radius _kThumbLabelTipRadius = Radius.circular(6.0);
+const Duration _kThumbLabelShowDuration = Duration(milliseconds: 400);
+const Duration _kThumbLabelHideDuration = Duration(milliseconds: 200);
+const Duration _kThumbLabelChangeDuration = Duration(milliseconds: 350);
+const Duration _kThumbLabelLingerDuration = Duration(milliseconds: 800);
+const int _kThumbLabelHapticIntervalMS = 45;
 
 /// Paints a scrollbar's track and thumb.
 ///
@@ -382,6 +401,63 @@ class ScrollbarPainter extends ChangeNotifier implements CustomPainter {
     notifyListeners();
   }
 
+  // - Thumb Label
+
+  TextPainter? _thumbLabelPainter;
+  TextPainter? _previousThumbLabelPainter;
+  bool _isThumbLabelMovingForward = true;
+  final _thumbLabelBubblePaint = Paint();
+  final _thumbLabelBubblePath = Path();
+  final _thumbLabelTextLayerPaint = Paint();
+
+  double get thumbLabelShowProgress => _thumbLabelShowProgress;
+  double _thumbLabelShowProgress = 0.0;
+  set thumbLabelShowProgress(double value) {
+    if (thumbLabelShowProgress == value) {
+      return;
+    }
+
+    _thumbLabelShowProgress = value;
+    notifyListeners();
+  }
+
+  double get thumbLabelChangeProgress => _thumbLabelChangeProgress;
+  double _thumbLabelChangeProgress = 1.0;
+  set thumbLabelChangeProgress(double value) {
+    if (thumbLabelChangeProgress == value) {
+      return;
+    }
+
+    _thumbLabelChangeProgress = value;
+    notifyListeners();
+  }
+
+  void setThumbLabel(String label, TextStyle style, Color color, {required bool animateChange, required bool isMovingForward}) {
+    _previousThumbLabelPainter?.dispose();
+    _previousThumbLabelPainter = null;
+    if (animateChange) {
+      _previousThumbLabelPainter = _thumbLabelPainter;
+    } else {
+      _thumbLabelPainter?.dispose();
+    }
+    _thumbLabelPainter = TextPainter(
+      text: TextSpan(text: label, style: style),
+      textDirection: textDirection ?? TextDirection.ltr,
+      maxLines: 1,
+    )..layout();
+    _thumbLabelBubblePaint.color = color;
+    _isThumbLabelMovingForward = isMovingForward;
+    notifyListeners();
+  }
+
+  void clearThumbLabel() {
+    _thumbLabelPainter?.dispose();
+    _thumbLabelPainter = null;
+    _previousThumbLabelPainter?.dispose();
+    _previousThumbLabelPainter = null;
+    notifyListeners();
+  }
+
   // - Scrollbar Details
 
   Rect? _trackRect;
@@ -533,17 +609,17 @@ class ScrollbarPainter extends ChangeNotifier implements CustomPainter {
   // - Painting
 
   Paint get _paintThumb {
-    return Paint()..color = color.withOpacity(color.opacity * fadeoutOpacityAnimation.value);
+    return Paint()..color = color.withValues(alpha: color.a * fadeoutOpacityAnimation.value);
   }
 
   Paint _paintTrack({bool isBorder = false}) {
     if (isBorder) {
       return Paint()
-        ..color = trackBorderColor.withOpacity(trackBorderColor.opacity * fadeoutOpacityAnimation.value)
+        ..color = trackBorderColor.withValues(alpha: trackBorderColor.a * fadeoutOpacityAnimation.value)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.0;
     }
-    return Paint()..color = trackColor.withOpacity(trackColor.opacity * fadeoutOpacityAnimation.value);
+    return Paint()..color = trackColor.withValues(alpha: trackColor.a * fadeoutOpacityAnimation.value);
   }
 
   void _paintScrollbar(Canvas canvas, Size size) {
@@ -643,7 +719,102 @@ class ScrollbarPainter extends ChangeNotifier implements CustomPainter {
     final double thumbPositionOffset = _getScrollToTrack(_lastMetrics!, _thumbExtent);
     _thumbOffset = thumbPositionOffset + _leadingThumbMainAxisOffset;
 
-    return _paintScrollbar(canvas, size);
+    _paintScrollbar(canvas, size);
+
+    final thumbLabelPainter = _thumbLabelPainter;
+    if (thumbLabelPainter != null) _paintThumbLabel(canvas, size, thumbLabelPainter);
+  }
+
+  void _paintThumbLabel(Canvas canvas, Size size, TextPainter labelPainter) {
+    final scale = _thumbLabelShowProgress;
+    if (scale <= 0.0) return;
+
+    final bool isOnRight;
+    switch (_resolvedOrientation) {
+      case ScrollbarOrientation.right:
+        isOnRight = true;
+      case ScrollbarOrientation.left:
+        isOnRight = false;
+      case ScrollbarOrientation.top:
+      case ScrollbarOrientation.bottom:
+        return;
+    }
+
+    final thumbRect = _thumbRect!;
+    final previousLabelPainter = _previousThumbLabelPainter;
+    final changeProgress = _thumbLabelChangeProgress;
+    final changeProgressEased = Curves.easeOutCubic.transform(changeProgress);
+    final isChanging = previousLabelPainter != null && changeProgress < 1.0;
+
+    var labelWidth = labelPainter.width;
+    if (isChanging) {
+      final previousLabelWidth = previousLabelPainter.width;
+      labelWidth = previousLabelWidth + (labelWidth - previousLabelWidth) * changeProgressEased;
+    }
+    const bubbleHeight = _kThumbLabelBubbleSize;
+    final bubbleWidth = math.max(bubbleHeight, labelWidth + _kThumbLabelHorizontalPadding * 2);
+    final minBubbleBottom = padding.top + bubbleHeight;
+    final maxBubbleBottom = math.max(minBubbleBottom, size.height - padding.bottom);
+    final thumbCenterY = thumbRect.center.dy;
+    final bubbleBottom = clampDouble(thumbCenterY, minBubbleBottom, maxBubbleBottom);
+    final tipX = isOnRight ? thumbRect.right - _kThumbLabelEdgeOffset : thumbRect.left + _kThumbLabelEdgeOffset;
+    final bubbleLeft = isOnRight ? tipX - bubbleWidth : tipX;
+    final bubbleRect = Rect.fromLTWH(bubbleLeft, bubbleBottom - bubbleHeight, bubbleWidth, bubbleHeight);
+    const roundRadius = Radius.circular(bubbleHeight / 2);
+    final bubble = RRect.fromRectAndCorners(
+      bubbleRect,
+      topLeft: roundRadius,
+      topRight: roundRadius,
+      bottomLeft: isOnRight ? roundRadius : _kThumbLabelTipRadius,
+      bottomRight: isOnRight ? _kThumbLabelTipRadius : roundRadius,
+    );
+
+    var totalScale = scale;
+    if (isChanging) {
+      final popWave = math.sin(changeProgress * math.pi);
+      totalScale += popWave * _kThumbLabelPopStrength;
+    }
+
+    canvas.save();
+    canvas.translate(tipX, bubbleBottom);
+    canvas.scale(totalScale);
+    canvas.translate(-tipX, -bubbleBottom);
+
+    final bubblePath = _thumbLabelBubblePath
+      ..reset()
+      ..addRRect(bubble);
+    canvas.drawShadow(bubblePath, const Color(0xFF000000), _kThumbLabelShadowElevation, false);
+    canvas.drawRRect(bubble, _thumbLabelBubblePaint);
+
+    final center = bubbleRect.center;
+    if (isChanging) {
+      const slideDistance = bubbleHeight * _kThumbLabelSlideFraction;
+      final direction = _isThumbLabelMovingForward ? 1.0 : -1.0;
+      final previousLabelDy = -direction * slideDistance * changeProgressEased;
+      final previousLabelOpacity = 1.0 - changeProgressEased;
+      final labelDy = direction * slideDistance * previousLabelOpacity;
+      canvas.clipRRect(bubble);
+      _paintThumbLabelText(canvas, previousLabelPainter, center, previousLabelDy, previousLabelOpacity);
+      _paintThumbLabelText(canvas, labelPainter, center, labelDy, changeProgressEased);
+    } else {
+      _paintThumbLabelText(canvas, labelPainter, center, 0.0, 1.0);
+    }
+
+    canvas.restore();
+  }
+
+  void _paintThumbLabelText(Canvas canvas, TextPainter textPainter, Offset center, double dy, double opacity) {
+    if (opacity <= 0.0) return;
+    final offset = Offset(center.dx - textPainter.width / 2, center.dy - textPainter.height / 2 + dy);
+    if (opacity >= 1.0) {
+      textPainter.paint(canvas, offset);
+      return;
+    }
+    final layerRect = offset & textPainter.size;
+    final layerPaint = _thumbLabelTextLayerPaint..color = Color.fromRGBO(0, 0, 0, opacity);
+    canvas.saveLayer(layerRect, layerPaint);
+    textPainter.paint(canvas, offset);
+    canvas.restore();
   }
 
   // - Scroll Position Conversion
@@ -823,6 +994,8 @@ class ScrollbarPainter extends ChangeNotifier implements CustomPainter {
   @override
   void dispose() {
     fadeoutOpacityAnimation.removeListener(notifyListeners);
+    _thumbLabelPainter?.dispose();
+    _previousThumbLabelPainter?.dispose();
     super.dispose();
   }
 }
@@ -990,6 +1163,7 @@ class RawScrollbarModified extends StatefulWidget {
     this.scrollStep = 0,
     this.onThumbLongPressStart,
     this.onThumbLongPressEnd,
+    this.thumbLabel,
     this.scrollbarOrientation,
     this.mainAxisMargin = 0.0,
     this.crossAxisMargin = 0.0,
@@ -1419,6 +1593,9 @@ class RawScrollbarModified extends StatefulWidget {
 
   final VoidCallback? onThumbLongPressEnd;
 
+  /// Called when a thumb drag or track tap starts, returning null shows no label for that interaction.
+  final ScrollbarThumbLabelResolver? Function()? thumbLabel;
+
   /// {@macro flutter.widgets.Scrollbar.scrollbarOrientation}
   final ScrollbarOrientation? scrollbarOrientation;
 
@@ -1468,6 +1645,7 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
   final GlobalKey _scrollbarPainterKey = GlobalKey();
   bool _hoverIsActive = false;
   bool _thumbDragging = false;
+  _ScrollbarThumbLabel? _thumbLabel;
 
   ScrollController? get _effectiveScrollController => widget.controller ?? PrimaryScrollController.maybeOf(context);
 
@@ -1818,6 +1996,23 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
     _lastDragUpdateOffset = localPosition;
     _startDragThumbOffset = scrollbarPainter.getThumbScrollOffset();
     _thumbDragging = true;
+    final position = _cachedController!.position;
+    _startThumbLabel(position);
+  }
+
+  void _startThumbLabel(ScrollMetrics metrics) {
+    final thumbLabelResolver = widget.thumbLabel?.call();
+    if (thumbLabelResolver == null) return;
+
+    final theme = Theme.of(context);
+    final accentColor = theme.colorScheme.primary.withValues(alpha: _kThumbLabelAccentOpacity);
+    final bubbleColor = Color.alphaBlend(accentColor, theme.scaffoldBackgroundColor);
+    final isBubbleDark = ThemeData.estimateBrightnessForColor(bubbleColor) == Brightness.dark;
+    final textColor = isBubbleDark ? Colors.white : Colors.black;
+    final baseTextStyle = theme.textTheme.displayLarge ?? const TextStyle();
+    final textStyle = baseTextStyle.copyWith(fontSize: _kThumbLabelFontSize, height: 1.0, color: textColor);
+    final thumbLabel = _thumbLabel ??= _ScrollbarThumbLabel(vsync: this, painter: scrollbarPainter);
+    thumbLabel.start(thumbLabelResolver, metrics, textStyle: textStyle, color: bubbleColor);
   }
 
   /// Handler called when a currently active long press gesture moves.
@@ -1855,6 +2050,7 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
   void handleThumbPressCancel() {
     widget.onThumbLongPressEnd?.call();
     _thumbDragging = false;
+    _thumbLabel?.end();
     final Axis? direction = getScrollbarDirection();
     if (direction == null) {
       return;
@@ -1867,7 +2063,7 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
     _cachedController = null;
   }
 
-  void _handleTrackTapUp(TapUpDetails details) {
+  void _handleTrackTapUp(TapUpDetails details) async {
     if (widget.tapToScroll?.call() != true) {
       return;
     }
@@ -1893,11 +2089,14 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
 
     final destination = (tapPosition / position.viewportDimension) * position.extentTotal;
 
-    _cachedController!.position.moveTo(
+    _startThumbLabel(position);
+    await _cachedController!.position.moveTo(
       destination, // old: _cachedController!.position.pixels + scrollIncrement
       duration: const Duration(milliseconds: 150),
       curve: Curves.easeInOutQuart,
     );
+    if (!mounted || _thumbDragging) return;
+    _thumbLabel?.end();
   }
 
   // ScrollController takes precedence over ScrollNotification
@@ -1974,6 +2173,7 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
 
       if (_shouldUpdatePainter(metrics.axis)) {
         scrollbarPainter.update(metrics, metrics.axisDirection);
+        _thumbLabel?.update(metrics);
       }
     } else if (notification is ScrollEndNotification) {
       if (_startDragScrollbarAxisOffset == null) {
@@ -2150,6 +2350,7 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
   void dispose() {
     _fadeoutAnimationController.dispose();
     _fadeoutTimer?.cancel();
+    _thumbLabel?.dispose();
     scrollbarPainter.dispose();
     if (_thumbDragging) {
       _thumbDragging = false;
@@ -2211,6 +2412,118 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
         ),
       ),
     );
+  }
+}
+
+// by claude
+class _ScrollbarThumbLabel {
+  _ScrollbarThumbLabel({required TickerProvider vsync, required this.painter}) {
+    _showController = AnimationController(
+      vsync: vsync,
+      duration: _kThumbLabelShowDuration,
+      reverseDuration: _kThumbLabelHideDuration,
+    )..addStatusListener(_onShowStatusChanged);
+    _showAnimation = CurvedAnimation(
+      parent: _showController,
+      curve: Curves.easeOutBack,
+      reverseCurve: Curves.easeInCubic,
+    )..addListener(_onShowTick);
+    _changeController = AnimationController(
+      vsync: vsync,
+      duration: _kThumbLabelChangeDuration,
+      value: 1.0,
+    )..addListener(_onChangeTick);
+  }
+
+  final ScrollbarPainter painter;
+  late final AnimationController _showController;
+  late final CurvedAnimation _showAnimation;
+  late final AnimationController _changeController;
+  final _hapticStopwatch = Stopwatch()..start();
+
+  ScrollbarThumbLabelResolver? _resolver;
+  String? _label;
+  double _lastScrollFraction = 0.0;
+  Timer? _hideTimer;
+  late TextStyle _textStyle;
+  late TextStyle _longTextStyle;
+  late Color _color;
+
+  void _onShowTick() => painter.thumbLabelShowProgress = _showAnimation.value;
+
+  void _onChangeTick() => painter.thumbLabelChangeProgress = _changeController.value;
+
+  void _onShowStatusChanged(AnimationStatus status) {
+    if (status != AnimationStatus.dismissed) return;
+    _label = null;
+    painter.clearThumbLabel();
+  }
+
+  void start(ScrollbarThumbLabelResolver resolver, ScrollMetrics metrics, {required TextStyle textStyle, required Color color}) {
+    _hideTimer?.cancel();
+    _hideTimer = null;
+    _resolver = resolver;
+    _textStyle = textStyle;
+    _longTextStyle = textStyle.copyWith(fontSize: _kThumbLabelLongFontSize);
+    _color = color;
+    update(metrics);
+    if (_label != null) _showController.forward();
+  }
+
+  void update(ScrollMetrics metrics) {
+    final resolver = _resolver;
+    if (resolver == null) return;
+    final scrollableExtent = metrics.maxScrollExtent - metrics.minScrollExtent;
+    if (scrollableExtent <= 0.0) return;
+
+    final scrolledExtent = metrics.pixels - metrics.minScrollExtent;
+    final scrollFraction = clampDouble(scrolledExtent / scrollableExtent, 0.0, 1.0);
+    final isMovingForward = scrollFraction >= _lastScrollFraction;
+    _lastScrollFraction = scrollFraction;
+
+    final label = resolver(scrollFraction);
+    if (label == _label) return;
+    if (label == null) {
+      _label = null;
+      _showController.reverse();
+      return;
+    }
+
+    final wasShowingLabel = _label != null;
+    _label = label;
+    final textStyle = label.length > _kThumbLabelMaxShortLength ? _longTextStyle : _textStyle;
+    painter.setThumbLabel(label, textStyle, _color, animateChange: wasShowingLabel, isMovingForward: isMovingForward);
+    if (wasShowingLabel) {
+      final changeFrom = _changeController.isAnimating ? _kThumbLabelChangeInterruptedFrom : 0.0;
+      _changeController.forward(from: changeFrom);
+      _tickHaptic();
+    } else {
+      _changeController.value = 1.0;
+      _showController.forward();
+    }
+  }
+
+  void _tickHaptic() {
+    if (_hapticStopwatch.elapsedMilliseconds < _kThumbLabelHapticIntervalMS) return;
+    _hapticStopwatch.reset();
+    HapticFeedback.selectionClick();
+  }
+
+  void end() {
+    if (_resolver == null) return;
+    _resolver = null;
+    _hideTimer?.cancel();
+    _hideTimer = Timer(_kThumbLabelLingerDuration, () {
+      _hideTimer = null;
+      _showController.reverse();
+    });
+  }
+
+  void dispose() {
+    _hideTimer?.cancel();
+    _showAnimation.dispose();
+    _showController.dispose();
+    _changeController.dispose();
   }
 }
 
@@ -2285,3 +2598,5 @@ Offset _getLocalOffset(GlobalKey scrollbarPainterKey, Offset position) {
   final RenderBox renderBox = scrollbarPainterKey.currentContext!.findRenderObject()! as RenderBox;
   return renderBox.globalToLocal(position);
 }
+
+typedef ScrollbarThumbLabelResolver = String? Function(double scrollFraction);
