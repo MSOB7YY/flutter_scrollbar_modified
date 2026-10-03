@@ -25,7 +25,7 @@ const double _kThumbLabelLongFontSize = _kThumbLabelFontSize * 0.6;
 const int _kThumbLabelMaxShortLength = 2;
 const double _kThumbLabelSlideFraction = 0.4;
 const double _kThumbLabelPopStrength = 0.14;
-const double _kThumbLabelAccentOpacity = 0.75;
+const double _kThumbLabelAccentOpacity = 0.5;
 const double _kThumbLabelShadowElevation = 3.0;
 const double _kThumbLabelChangeInterruptedFrom = 0.45;
 const Radius _kThumbLabelTipRadius = Radius.circular(6.0);
@@ -2005,7 +2005,7 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
     if (thumbLabelResolver == null) return;
 
     final theme = Theme.of(context);
-    final accentColor = theme.colorScheme.primary.withValues(alpha: _kThumbLabelAccentOpacity);
+    final accentColor = theme.colorScheme.secondary.withValues(alpha: _kThumbLabelAccentOpacity);
     final bubbleColor = Color.alphaBlend(accentColor, theme.scaffoldBackgroundColor);
     final isBubbleDark = ThemeData.estimateBrightnessForColor(bubbleColor) == Brightness.dark;
     final textColor = isBubbleDark ? Colors.white : Colors.black;
