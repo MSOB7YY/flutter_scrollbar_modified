@@ -916,10 +916,10 @@ class ScrollbarPainter extends ChangeNotifier implements CustomPainter {
     switch (kind) {
       case PointerDeviceKind.touch:
       case PointerDeviceKind.trackpad:
-        return paddedRect.contains(position);
-      case PointerDeviceKind.mouse:
       case PointerDeviceKind.stylus:
       case PointerDeviceKind.invertedStylus:
+        return paddedRect.contains(position);
+      case PointerDeviceKind.mouse:
       case PointerDeviceKind.unknown:
         return interactiveRect.contains(position);
     }
@@ -946,13 +946,13 @@ class ScrollbarPainter extends ChangeNotifier implements CustomPainter {
     switch (kind) {
       case PointerDeviceKind.touch:
       case PointerDeviceKind.trackpad:
+      case PointerDeviceKind.stylus:
+      case PointerDeviceKind.invertedStylus:
         final Rect touchThumbRect = _thumbRect!.expandToInclude(
           Rect.fromCircle(center: _thumbRect!.center, radius: _minInteractiveSize / 2),
         );
         return touchThumbRect.contains(position);
       case PointerDeviceKind.mouse:
-      case PointerDeviceKind.stylus:
-      case PointerDeviceKind.invertedStylus:
       case PointerDeviceKind.unknown:
         final Rect mouseThumbRect = _thumbRect!.expandToInclude(
           Rect.fromCircle(center: _thumbRect!.center, radius: _minInteractiveSize / 8),
@@ -1533,8 +1533,8 @@ class RawScrollbarModified extends StatefulWidget {
   /// Cannot be null, defaults to a [Duration] of 600 milliseconds.
   final Duration timeToFade;
 
-  /// The [Duration] of time that a LongPress will trigger the drag gesture of
-  /// the scrollbar thumb.
+  /// How long a press on the track outside the thumb must hold before moving
+  /// drags the scrollbar thumb.
   ///
   /// Cannot be null, defaults to [Duration.zero].
   final Duration pressDuration;
@@ -1977,7 +1977,7 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
     _fadeoutTimer?.cancel();
   }
 
-  /// Handler called when a long press gesture has started.
+  /// Handler called when a thumb drag has started.
   ///
   /// Begins the fade out animation and initializes dragging the scrollbar thumb.
   @protected
@@ -2015,7 +2015,7 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
     thumbLabel.start(thumbLabelResolver, metrics, textStyle: textStyle, color: bubbleColor);
   }
 
-  /// Handler called when a currently active long press gesture moves.
+  /// Handler called when a currently active thumb drag moves.
   ///
   /// Updates the position of the child scrollable.
   @protected
@@ -2037,7 +2037,7 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
     _lastDragUpdateOffset = localPosition;
   }
 
-  /// Handler called when a long press has ended.
+  /// Handler called when a thumb drag has ended.
   @protected
   @mustCallSuper
   void handleThumbPressEnd(Offset localPosition, Velocity velocity) {
@@ -2189,19 +2189,23 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
       return gestures;
     }
 
-    gestures[_ThumbPressGestureRecognizer] = GestureRecognizerFactoryWithHandlers<_ThumbPressGestureRecognizer>(
-      () => _ThumbPressGestureRecognizer(
+    gestures[_ThumbDragGestureRecognizer] = GestureRecognizerFactoryWithHandlers<_ThumbDragGestureRecognizer>(
+      () => _ThumbDragGestureRecognizer(
         debugOwner: this,
         customPaintKey: _scrollbarPainterKey,
-        duration: widget.pressDuration,
+        holdDuration: widget.pressDuration,
         allowAnywhere: widget.enhancedDragToScroll,
       ),
-      (_ThumbPressGestureRecognizer instance) {
-        instance.onLongPress = handleThumbPress;
-        instance.onLongPressStart = (LongPressStartDetails details) => handleThumbPressStart(details.localPosition);
-        instance.onLongPressMoveUpdate = (LongPressMoveUpdateDetails details) => handleThumbPressUpdate(details.localPosition);
-        instance.onLongPressEnd = (LongPressEndDetails details) => handleThumbPressEnd(details.localPosition, details.velocity);
-        instance.onLongPressCancel = handleThumbPressCancel;
+      (_ThumbDragGestureRecognizer instance) {
+        instance.onStart = (DragStartDetails details) {
+          handleThumbPressStart(details.localPosition);
+          handleThumbPress();
+        };
+        instance.onUpdate = (DragUpdateDetails details) => handleThumbPressUpdate(details.localPosition);
+        instance.onEnd = (DragEndDetails details) => handleThumbPressEnd(details.localPosition, details.velocity);
+        instance.dragStartBehavior = DragStartBehavior.down;
+        instance.onlyAcceptDragOnThreshold = true;
+        instance.gestureSettings = MediaQuery.maybeGestureSettingsOf(context);
       },
     );
 
@@ -2527,40 +2531,71 @@ class _ScrollbarThumbLabel {
   }
 }
 
-// A long press gesture detector that only responds to events on the scrollbar's
-// thumb and ignores everything else.
-class _ThumbPressGestureRecognizer extends LongPressGestureRecognizer {
-  _ThumbPressGestureRecognizer({
+// by claude
+/// grabs on movement only, so still presses reach what's under the scrollbar. off-thumb track grabs need [holdDuration] first.
+class _ThumbDragGestureRecognizer extends PanGestureRecognizer {
+  _ThumbDragGestureRecognizer({
     required Object super.debugOwner,
     required GlobalKey customPaintKey,
     required this.allowAnywhere,
-    required super.duration,
+    required this.holdDuration,
   }) : _customPaintKey = customPaintKey;
 
   final GlobalKey _customPaintKey;
   final bool Function()? allowAnywhere;
+  final Duration holdDuration;
+
+  bool _isOnThumb = false;
+  bool _isVertical = true;
+  Duration _downTimeStamp = Duration.zero;
+  Duration _lastMoveTimeStamp = Duration.zero;
+  Offset _movedDelta = Offset.zero;
 
   @override
-  bool isPointerAllowed(PointerDownEvent event) {
-    if (!_hitTestInteractive(_customPaintKey, event.position, event.kind)) {
-      return false;
+  bool isPointerPanZoomAllowed(PointerPanZoomStartEvent event) => false;
+
+  @override
+  bool isPointerAllowed(PointerEvent event) {
+    final customPaintContext = _customPaintKey.currentContext;
+    if (customPaintContext == null) return false;
+    final CustomPaint customPaint = customPaintContext.widget as CustomPaint;
+    final ScrollbarPainter painter = customPaint.foregroundPainter! as ScrollbarPainter;
+    final Offset localOffset = _getLocalOffset(_customPaintKey, event.position);
+    final isOnThumb = painter.hitTestOnlyThumbInteractive(localOffset, event.kind);
+    if (!isOnThumb) {
+      final allowWholeTrack = allowAnywhere?.call() == true;
+      if (!allowWholeTrack || !painter.hitTestInteractive(localOffset, event.kind)) return false;
     }
-    return super.isPointerAllowed(event);
+    if (!super.isPointerAllowed(event)) return false;
+    _isOnThumb = isOnThumb;
+    _isVertical = painter._isVertical;
+    return true;
   }
 
-  bool _hitTestInteractive(GlobalKey customPaintKey, Offset offset, PointerDeviceKind kind) {
-    if (customPaintKey.currentContext == null) {
-      return false;
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    _downTimeStamp = event.timeStamp;
+    _movedDelta = Offset.zero;
+    super.addAllowedPointer(event);
+  }
+
+  @override
+  void handleEvent(PointerEvent event) {
+    if (event is PointerMoveEvent) {
+      _movedDelta += event.delta;
+      _lastMoveTimeStamp = event.timeStamp;
     }
-    final CustomPaint customPaint = customPaintKey.currentContext!.widget as CustomPaint;
-    final ScrollbarPainter painter = customPaint.foregroundPainter! as ScrollbarPainter;
-    final Offset localOffset = _getLocalOffset(customPaintKey, offset);
-    final allowWholeTrack = allowAnywhere?.call() == true;
-    if (allowWholeTrack) {
-      return painter.hitTestInteractive(localOffset, kind);
-    } else {
-      return painter.hitTestOnlyThumbInteractive(localOffset, kind);
-    }
+    super.handleEvent(event);
+  }
+
+  /// half the scrollable's own slop, so a grab wins over the scroll it sits on.
+  @override
+  bool hasSufficientGlobalDistanceToAccept(PointerDeviceKind pointerDeviceKind, double? deviceTouchSlop) {
+    final mainAxisMoved = _isVertical ? _movedDelta.dy : _movedDelta.dx;
+    final grabSlop = computeHitSlop(pointerDeviceKind, gestureSettings) / 2;
+    if (mainAxisMoved.abs() <= grabSlop) return false;
+    if (_isOnThumb) return true;
+    return _lastMoveTimeStamp - _downTimeStamp >= holdDuration;
   }
 }
 

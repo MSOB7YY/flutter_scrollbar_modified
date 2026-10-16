@@ -188,9 +188,6 @@ class _CupertinoScrollbarState extends RawScrollbarModifiedState<CupertinoScroll
 
   double _pressStartAxisPosition = 0.0;
 
-  // Long press event callbacks handle the gesture where the user long presses
-  // on the scrollbar thumb and then drags the scrollbar without releasing.
-
   @override
   void handleThumbPressStart(Offset localPosition) {
     super.handleThumbPressStart(localPosition);
