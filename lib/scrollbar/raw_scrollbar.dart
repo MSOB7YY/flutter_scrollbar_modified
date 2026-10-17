@@ -2374,42 +2374,52 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
         child: RepaintBoundary(
           child: Listener(
             onPointerSignal: _receivedPointerSignal,
-            child: RawGestureDetector(
-              gestures: _gestures,
-              child: MouseRegion(
-                onExit: (PointerExitEvent event) {
-                  switch (event.kind) {
-                    case PointerDeviceKind.mouse:
-                    case PointerDeviceKind.trackpad:
-                      if (enableGestures) {
-                        handleHoverExit(event);
-                      }
-                    case PointerDeviceKind.stylus:
-                    case PointerDeviceKind.invertedStylus:
-                    case PointerDeviceKind.unknown:
-                    case PointerDeviceKind.touch:
-                      break;
-                  }
-                },
-                onHover: (PointerHoverEvent event) {
-                  switch (event.kind) {
-                    case PointerDeviceKind.mouse:
-                    case PointerDeviceKind.trackpad:
-                      if (enableGestures) {
-                        handleHover(event);
-                      }
-                    case PointerDeviceKind.stylus:
-                    case PointerDeviceKind.invertedStylus:
-                    case PointerDeviceKind.unknown:
-                    case PointerDeviceKind.touch:
-                      break;
-                  }
-                },
-                child: CustomPaint(
-                  key: _scrollbarPainterKey,
-                  foregroundPainter: scrollbarPainter,
-                  child: RepaintBoundary(child: widget.child),
-                ),
+            child: MouseRegion(
+              onExit: (PointerExitEvent event) {
+                switch (event.kind) {
+                  case PointerDeviceKind.mouse:
+                  case PointerDeviceKind.trackpad:
+                    if (enableGestures) {
+                      handleHoverExit(event);
+                    }
+                  case PointerDeviceKind.stylus:
+                  case PointerDeviceKind.invertedStylus:
+                  case PointerDeviceKind.unknown:
+                  case PointerDeviceKind.touch:
+                    break;
+                }
+              },
+              onHover: (PointerHoverEvent event) {
+                switch (event.kind) {
+                  case PointerDeviceKind.mouse:
+                  case PointerDeviceKind.trackpad:
+                    if (enableGestures) {
+                      handleHover(event);
+                    }
+                  case PointerDeviceKind.stylus:
+                  case PointerDeviceKind.invertedStylus:
+                  case PointerDeviceKind.unknown:
+                  case PointerDeviceKind.touch:
+                    break;
+                }
+              },
+              // -- on top of the child, not around it: pointer events reach these recognizers before the scrollable's, so a grab wins same-move races
+              child: Stack(
+                fit: StackFit.passthrough,
+                children: [
+                  CustomPaint(
+                    key: _scrollbarPainterKey,
+                    foregroundPainter: scrollbarPainter,
+                    child: RepaintBoundary(child: widget.child),
+                  ),
+                  Positioned.fill(
+                    child: RawGestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      excludeFromSemantics: true,
+                      gestures: _gestures,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
