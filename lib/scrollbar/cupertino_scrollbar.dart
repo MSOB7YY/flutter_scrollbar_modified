@@ -90,6 +90,7 @@ class CupertinoScrollbar extends RawScrollbarModified {
     super.pressDuration = const Duration(milliseconds: 80),
     super.tapToScroll,
     super.enhancedDragToScroll,
+    super.instantThumbGrab,
     super.showOnStart,
     super.allowDraggingOutOfRange,
     super.scrollStep,
@@ -181,6 +182,7 @@ class _CupertinoScrollbarState extends RawScrollbarModifiedState<CupertinoScroll
       ..crossAxisMargin = _kScrollbarCrossAxisMargin
       ..radius = _radius
       ..padding = MediaQuery.paddingOf(context)
+      ..minInteractiveSize = widget.minInteractiveSize ?? CupertinoScrollbar.defaultMinInteractiveSize
       ..minLength = _kScrollbarMinLength
       ..minOverscrollLength = _kScrollbarMinOverscrollLength
       ..scrollbarOrientation = widget.scrollbarOrientation;

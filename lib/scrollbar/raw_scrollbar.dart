@@ -1157,6 +1157,7 @@ class RawScrollbarModified extends StatefulWidget {
     this.interactive,
     this.tapToScroll,
     this.enhancedDragToScroll,
+    this.instantThumbGrab,
     this.showOnStart = false,
     this.ignorePhysics = true,
     this.allowDraggingOutOfRange = false,
@@ -1533,8 +1534,7 @@ class RawScrollbarModified extends StatefulWidget {
   /// Cannot be null, defaults to a [Duration] of 600 milliseconds.
   final Duration timeToFade;
 
-  /// How long a press on the track outside the thumb must hold before moving
-  /// drags the scrollbar thumb.
+  /// How long a press must hold before moving drags the scrollbar thumb, see [instantThumbGrab].
   ///
   /// Cannot be null, defaults to [Duration.zero].
   final Duration pressDuration;
@@ -1579,6 +1579,11 @@ class RawScrollbarModified extends StatefulWidget {
   ///
   /// Defaults to false.
   final bool Function()? enhancedDragToScroll;
+
+  /// Whether a drag starting on the thumb grabs it right away, skipping [pressDuration].
+  ///
+  /// Defaults to false, the hold keeps scrolls near the edge from grabbing the thumb.
+  final bool Function()? instantThumbGrab;
 
   /// Flash the Scrollbar initially
   final bool showOnStart;
@@ -2195,6 +2200,7 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
         customPaintKey: _scrollbarPainterKey,
         holdDuration: widget.pressDuration,
         allowAnywhere: widget.enhancedDragToScroll,
+        instantThumbGrab: widget.instantThumbGrab,
       ),
       (_ThumbDragGestureRecognizer instance) {
         instance.onStart = (DragStartDetails details) {
@@ -2542,18 +2548,20 @@ class _ScrollbarThumbLabel {
 }
 
 // by claude
-/// grabs on movement only, so still presses reach what's under the scrollbar. off-thumb track grabs need [holdDuration] first.
+/// grabs on movement only, so still presses reach what's under the scrollbar. grabs need [holdDuration] first, except on the thumb with [instantThumbGrab].
 class _ThumbDragGestureRecognizer extends PanGestureRecognizer {
   _ThumbDragGestureRecognizer({
     required Object super.debugOwner,
     required GlobalKey customPaintKey,
     required this.allowAnywhere,
     required this.holdDuration,
+    required this.instantThumbGrab,
   }) : _customPaintKey = customPaintKey;
 
   final GlobalKey _customPaintKey;
   final bool Function()? allowAnywhere;
   final Duration holdDuration;
+  final bool Function()? instantThumbGrab;
 
   bool _isOnThumb = false;
   bool _isVertical = true;
@@ -2598,13 +2606,14 @@ class _ThumbDragGestureRecognizer extends PanGestureRecognizer {
     super.handleEvent(event);
   }
 
-  /// half the scrollable's own slop, so a grab wins over the scroll it sits on.
+  /// the scrollable's own slop, so a press that drifts a little stays a tap. ties go to the scrollbar, it sees each event first.
   @override
   bool hasSufficientGlobalDistanceToAccept(PointerDeviceKind pointerDeviceKind, double? deviceTouchSlop) {
     final mainAxisMoved = _isVertical ? _movedDelta.dy : _movedDelta.dx;
-    final grabSlop = computeHitSlop(pointerDeviceKind, gestureSettings) / 2;
+    final grabSlop = computeHitSlop(pointerDeviceKind, gestureSettings);
     if (mainAxisMoved.abs() <= grabSlop) return false;
-    if (_isOnThumb) return true;
+    final canGrabInstantly = _isOnThumb && instantThumbGrab?.call() == true;
+    if (canGrabInstantly) return true;
     return _lastMoveTimeStamp - _downTimeStamp >= holdDuration;
   }
 }
