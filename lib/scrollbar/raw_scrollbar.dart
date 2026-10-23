@@ -2069,9 +2069,6 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
   }
 
   void _handleTrackTapUp(TapUpDetails details) async {
-    if (widget.tapToScroll?.call() != true) {
-      return;
-    }
     // The Scrollbar should page towards the position of the tap on the track.
     assert(_debugCheckHasValidScrollPosition());
     _cachedController = _effectiveScrollController;
@@ -2219,6 +2216,7 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
       () => _TrackTapGestureRecognizer(
         debugOwner: this,
         customPaintKey: _scrollbarPainterKey,
+        tapToScroll: widget.tapToScroll,
       ),
       (_TrackTapGestureRecognizer instance) {
         instance.onTapUp = _handleTrackTapUp;
@@ -2624,12 +2622,15 @@ class _TrackTapGestureRecognizer extends TapGestureRecognizer {
   _TrackTapGestureRecognizer({
     required super.debugOwner,
     required GlobalKey customPaintKey,
+    required this.tapToScroll,
   }) : _customPaintKey = customPaintKey;
 
   final GlobalKey _customPaintKey;
+  final bool Function()? tapToScroll;
 
   @override
   bool isPointerAllowed(PointerDownEvent event) {
+    if (tapToScroll?.call() != true) return false;
     if (!_hitTestInteractive(_customPaintKey, event.position, event.kind)) {
       return false;
     }
