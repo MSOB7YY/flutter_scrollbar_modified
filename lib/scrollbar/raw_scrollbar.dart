@@ -83,8 +83,7 @@ class ScrollbarPainter extends ChangeNotifier implements CustomPainter {
     double? minOverscrollLength,
     ScrollbarOrientation? scrollbarOrientation,
     bool ignorePointer = false,
-    bool Function()? tapToScroll,
-    bool Function()? enhancedDragToScroll,
+    ScrollbarTrackMode Function()? trackMode,
   })  : assert(radius == null || shape == null),
         assert(minLength >= 0),
         assert(minOverscrollLength == null || minOverscrollLength <= minLength),
@@ -106,8 +105,7 @@ class ScrollbarPainter extends ChangeNotifier implements CustomPainter {
         _scrollbarOrientation = scrollbarOrientation,
         _minOverscrollLength = minOverscrollLength ?? minLength,
         _ignorePointer = ignorePointer,
-        _tapToScroll = tapToScroll,
-        _enhancedDragToScroll = enhancedDragToScroll {
+        _trackMode = trackMode {
     fadeoutOpacityAnimation.addListener(notifyListeners);
   }
 
@@ -379,25 +377,14 @@ class ScrollbarPainter extends ChangeNotifier implements CustomPainter {
     notifyListeners();
   }
 
-  bool Function()? get tapToScroll => _tapToScroll;
-  bool Function()? _tapToScroll;
-  set tapToScroll(bool Function()? value) {
-    if (tapToScroll == value) {
+  ScrollbarTrackMode Function()? get trackMode => _trackMode;
+  ScrollbarTrackMode Function()? _trackMode;
+  set trackMode(ScrollbarTrackMode Function()? value) {
+    if (trackMode == value) {
       return;
     }
 
-    _tapToScroll = value;
-    notifyListeners();
-  }
-
-  bool Function()? get enhancedDragToScroll => _enhancedDragToScroll;
-  bool Function()? _enhancedDragToScroll;
-  set enhancedDragToScroll(bool Function()? value) {
-    if (enhancedDragToScroll == value) {
-      return;
-    }
-
-    _enhancedDragToScroll = value;
+    _trackMode = value;
     notifyListeners();
   }
 
@@ -839,6 +826,14 @@ class ScrollbarPainter extends ChangeNotifier implements CustomPainter {
     return fractionPast * (_traversableTrackExtent - _thumbExtent);
   }
 
+  double getThumbScrollOffsetCenteredAt(Offset position) {
+    final mainAxisPosition = _isVertical ? position.dy : position.dx;
+    final thumbMovableExtent = _traversableTrackExtent - _thumbExtent;
+    final centeredThumbStart = mainAxisPosition - _leadingThumbMainAxisOffset - _thumbExtent / 2;
+    final trackOffset = clampDouble(centeredThumbStart, 0.0, thumbMovableExtent);
+    return _isReversed ? thumbMovableExtent - trackOffset : trackOffset;
+  }
+
   // Converts between a scroll position and the corresponding position in the
   // thumb track.
   double _getScrollToTrack(ScrollMetrics metrics, double thumbExtent) {
@@ -869,7 +864,7 @@ class ScrollbarPainter extends ChangeNotifier implements CustomPainter {
       return false;
     }
 
-    if (tapToScroll?.call() == true) {
+    if (trackMode?.call() == ScrollbarTrackMode.jumpToTouch) {
       return _trackRect!.contains(position!);
     }
 
@@ -1155,8 +1150,7 @@ class RawScrollbarModified extends StatefulWidget {
     this.pressDuration = Duration.zero,
     this.notificationPredicate = defaultScrollNotificationPredicate,
     this.interactive,
-    this.tapToScroll,
-    this.enhancedDragToScroll,
+    this.trackMode,
     this.instantThumbGrab,
     this.showOnStart = false,
     this.ignorePhysics = true,
@@ -1570,15 +1564,10 @@ class RawScrollbarModified extends StatefulWidget {
   /// {@endtemplate}
   final bool? interactive;
 
-  /// Wether to scroll upon tapping anywhere in the track.
+  /// What touching the track (outside the thumb) does, see [ScrollbarTrackMode].
   ///
-  /// Defaults to false.
-  final bool Function()? tapToScroll;
-
-  /// Wether to scroll upon dragging anywhere in the track.
-  ///
-  /// Defaults to false.
-  final bool Function()? enhancedDragToScroll;
+  /// Defaults to [ScrollbarTrackMode.thumbOnly].
+  final ScrollbarTrackMode Function()? trackMode;
 
   /// Whether a drag starting on the thumb grabs it right away, skipping [pressDuration].
   ///
@@ -1720,8 +1709,7 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
       crossAxisMargin: widget.crossAxisMargin,
       minLength: widget.minThumbLength,
       minOverscrollLength: widget.minOverscrollLength ?? widget.minThumbLength,
-      tapToScroll: widget.tapToScroll,
-      enhancedDragToScroll: widget.enhancedDragToScroll,
+      trackMode: widget.trackMode,
     );
 
     if (widget.showOnStart) {
@@ -1987,7 +1975,7 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
   /// Begins the fade out animation and initializes dragging the scrollbar thumb.
   @protected
   @mustCallSuper
-  void handleThumbPressStart(Offset localPosition) {
+  void handleThumbPressStart(Offset localPosition, {bool jumpsToTouch = false}) {
     assert(_debugCheckHasValidScrollPosition());
     widget.onThumbLongPressStart?.call();
     _cachedController = _effectiveScrollController;
@@ -1999,9 +1987,15 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
     _fadeoutAnimationController.forward();
     _startDragScrollbarAxisOffset = localPosition;
     _lastDragUpdateOffset = localPosition;
-    _startDragThumbOffset = scrollbarPainter.getThumbScrollOffset();
     _thumbDragging = true;
     final position = _cachedController!.position;
+    if (jumpsToTouch) {
+      _startDragThumbOffset = scrollbarPainter.getThumbScrollOffsetCenteredAt(localPosition);
+      final canJump = widget.ignorePhysics || position.physics.shouldAcceptUserOffset(position);
+      if (canJump) _updateScrollPosition(localPosition);
+    } else {
+      _startDragThumbOffset = scrollbarPainter.getThumbScrollOffset();
+    }
     _startThumbLabel(position);
   }
 
@@ -2078,22 +2072,12 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
       return;
     }
 
-    double tapPosition = 0;
-
-    switch (position.axisDirection) {
-      case AxisDirection.up:
-      case AxisDirection.down:
-        tapPosition = details.localPosition.dy;
-      case AxisDirection.left:
-      case AxisDirection.right:
-        tapPosition = details.localPosition.dx;
-    }
-
-    final destination = (tapPosition / position.viewportDimension) * position.extentTotal;
+    final thumbScrollOffset = scrollbarPainter.getThumbScrollOffsetCenteredAt(details.localPosition);
+    final destination = scrollbarPainter.getTrackToScroll(thumbScrollOffset);
 
     _startThumbLabel(position);
     await _cachedController!.position.moveTo(
-      destination, // old: _cachedController!.position.pixels + scrollIncrement
+      destination,
       duration: const Duration(milliseconds: 150),
       curve: Curves.easeInOutQuart,
     );
@@ -2196,12 +2180,12 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
         debugOwner: this,
         customPaintKey: _scrollbarPainterKey,
         holdDuration: widget.pressDuration,
-        allowAnywhere: widget.enhancedDragToScroll,
+        trackMode: widget.trackMode,
         instantThumbGrab: widget.instantThumbGrab,
       ),
       (_ThumbDragGestureRecognizer instance) {
         instance.onStart = (DragStartDetails details) {
-          handleThumbPressStart(details.localPosition);
+          handleThumbPressStart(details.localPosition, jumpsToTouch: instance.jumpsToTouch);
           handleThumbPress();
         };
         instance.onUpdate = (DragUpdateDetails details) => handleThumbPressUpdate(details.localPosition);
@@ -2216,7 +2200,7 @@ class RawScrollbarModifiedState<T extends RawScrollbarModified> extends State<T>
       () => _TrackTapGestureRecognizer(
         debugOwner: this,
         customPaintKey: _scrollbarPainterKey,
-        tapToScroll: widget.tapToScroll,
+        trackMode: widget.trackMode,
       ),
       (_TrackTapGestureRecognizer instance) {
         instance.onTapUp = _handleTrackTapUp;
@@ -2551,17 +2535,20 @@ class _ThumbDragGestureRecognizer extends PanGestureRecognizer {
   _ThumbDragGestureRecognizer({
     required Object super.debugOwner,
     required GlobalKey customPaintKey,
-    required this.allowAnywhere,
+    required this.trackMode,
     required this.holdDuration,
     required this.instantThumbGrab,
   }) : _customPaintKey = customPaintKey;
 
   final GlobalKey _customPaintKey;
-  final bool Function()? allowAnywhere;
+  final ScrollbarTrackMode Function()? trackMode;
   final Duration holdDuration;
   final bool Function()? instantThumbGrab;
 
+  bool get jumpsToTouch => _jumpsToTouch;
+
   bool _isOnThumb = false;
+  bool _jumpsToTouch = false;
   bool _isVertical = true;
   Duration _downTimeStamp = Duration.zero;
   Duration _lastMoveTimeStamp = Duration.zero;
@@ -2578,12 +2565,16 @@ class _ThumbDragGestureRecognizer extends PanGestureRecognizer {
     final ScrollbarPainter painter = customPaint.foregroundPainter! as ScrollbarPainter;
     final Offset localOffset = _getLocalOffset(_customPaintKey, event.position);
     final isOnThumb = painter.hitTestOnlyThumbInteractive(localOffset, event.kind);
+    bool jumpsToTouch = false;
     if (!isOnThumb) {
-      final allowWholeTrack = allowAnywhere?.call() == true;
-      if (!allowWholeTrack || !painter.hitTestInteractive(localOffset, event.kind)) return false;
+      final trackMode = this.trackMode?.call() ?? ScrollbarTrackMode.thumbOnly;
+      if (!trackMode.canDragTrack) return false;
+      if (!painter.hitTestInteractive(localOffset, event.kind)) return false;
+      jumpsToTouch = trackMode == ScrollbarTrackMode.jumpToTouch;
     }
     if (!super.isPointerAllowed(event)) return false;
     _isOnThumb = isOnThumb;
+    _jumpsToTouch = jumpsToTouch;
     _isVertical = painter._isVertical;
     return true;
   }
@@ -2622,15 +2613,15 @@ class _TrackTapGestureRecognizer extends TapGestureRecognizer {
   _TrackTapGestureRecognizer({
     required super.debugOwner,
     required GlobalKey customPaintKey,
-    required this.tapToScroll,
+    required this.trackMode,
   }) : _customPaintKey = customPaintKey;
 
   final GlobalKey _customPaintKey;
-  final bool Function()? tapToScroll;
+  final ScrollbarTrackMode Function()? trackMode;
 
   @override
   bool isPointerAllowed(PointerDownEvent event) {
-    if (tapToScroll?.call() != true) return false;
+    if (trackMode?.call() != ScrollbarTrackMode.jumpToTouch) return false;
     if (!_hitTestInteractive(_customPaintKey, event.position, event.kind)) {
       return false;
     }
@@ -2652,6 +2643,23 @@ class _TrackTapGestureRecognizer extends TapGestureRecognizer {
 Offset _getLocalOffset(GlobalKey scrollbarPainterKey, Offset position) {
   final RenderBox renderBox = scrollbarPainterKey.currentContext!.findRenderObject()! as RenderBox;
   return renderBox.globalToLocal(position);
+}
+
+/// What touching the scrollbar track (outside the thumb) does.
+enum ScrollbarTrackMode {
+  /// only the thumb can be dragged.
+  thumbOnly,
+
+  /// a held drag anywhere on the track moves the thumb from where it is.
+  dragAnywhere(canDragTrack: true),
+
+  /// a tap or held drag anywhere on the track jumps the thumb under the touch.
+  jumpToTouch(canDragTrack: true),
+  ;
+
+  final bool canDragTrack;
+
+  const ScrollbarTrackMode({this.canDragTrack = false});
 }
 
 typedef ScrollbarThumbLabelResolver = String? Function(double scrollFraction);

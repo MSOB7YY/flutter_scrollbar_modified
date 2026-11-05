@@ -88,8 +88,7 @@ class CupertinoScrollbar extends RawScrollbarModified {
     )
     bool? isAlwaysShown,
     super.pressDuration = const Duration(milliseconds: 80),
-    super.tapToScroll,
-    super.enhancedDragToScroll,
+    super.trackMode,
     super.instantThumbGrab,
     super.showOnStart,
     super.allowDraggingOutOfRange,
@@ -191,8 +190,8 @@ class _CupertinoScrollbarState extends RawScrollbarModifiedState<CupertinoScroll
   double _pressStartAxisPosition = 0.0;
 
   @override
-  void handleThumbPressStart(Offset localPosition) {
-    super.handleThumbPressStart(localPosition);
+  void handleThumbPressStart(Offset localPosition, {bool jumpsToTouch = false}) {
+    super.handleThumbPressStart(localPosition, jumpsToTouch: jumpsToTouch);
     final Axis? direction = getScrollbarDirection();
     if (direction == null) {
       return;
