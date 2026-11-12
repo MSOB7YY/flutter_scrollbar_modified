@@ -864,7 +864,8 @@ class ScrollbarPainter extends ChangeNotifier implements CustomPainter {
       return false;
     }
 
-    if (trackMode?.call() == ScrollbarTrackMode.jumpToTouch) {
+    final trackMode = this.trackMode?.call();
+    if (trackMode != null && trackMode.jumpsToTouch) {
       return _trackRect!.contains(position!);
     }
 
@@ -2530,7 +2531,8 @@ class _ScrollbarThumbLabel {
 }
 
 // by claude
-/// grabs on movement only, so still presses reach what's under the scrollbar. grabs need [holdDuration] first, except on the thumb with [instantThumbGrab].
+/// grabs on movement only, so still presses reach what's under the scrollbar. grabs need [holdDuration] first, except on the thumb with [instantThumbGrab],
+/// on the track with [ScrollbarTrackMode.grabsTrackInstantly], and on the track line the painter takes from the list.
 class _ThumbDragGestureRecognizer extends PanGestureRecognizer {
   _ThumbDragGestureRecognizer({
     required Object super.debugOwner,
@@ -2547,7 +2549,7 @@ class _ThumbDragGestureRecognizer extends PanGestureRecognizer {
 
   bool get jumpsToTouch => _jumpsToTouch;
 
-  bool _isOnThumb = false;
+  bool _grabsInstantly = false;
   bool _jumpsToTouch = false;
   bool _isVertical = true;
   Duration _downTimeStamp = Duration.zero;
@@ -2566,14 +2568,20 @@ class _ThumbDragGestureRecognizer extends PanGestureRecognizer {
     final Offset localOffset = _getLocalOffset(_customPaintKey, event.position);
     final isOnThumb = painter.hitTestOnlyThumbInteractive(localOffset, event.kind);
     bool jumpsToTouch = false;
-    if (!isOnThumb) {
+    bool grabsInstantly;
+    if (isOnThumb) {
+      grabsInstantly = instantThumbGrab?.call() == true;
+    } else {
       final trackMode = this.trackMode?.call() ?? ScrollbarTrackMode.thumbOnly;
       if (!trackMode.canDragTrack) return false;
       if (!painter.hitTestInteractive(localOffset, event.kind)) return false;
-      jumpsToTouch = trackMode == ScrollbarTrackMode.jumpToTouch;
+      jumpsToTouch = trackMode.jumpsToTouch;
+      // -- the painter takes these touches from the list, so with a hold the drag did nothing
+      final isTakenFromList = painter.hitTest(localOffset) == true;
+      grabsInstantly = trackMode.grabsTrackInstantly || isTakenFromList;
     }
     if (!super.isPointerAllowed(event)) return false;
-    _isOnThumb = isOnThumb;
+    _grabsInstantly = grabsInstantly;
     _jumpsToTouch = jumpsToTouch;
     _isVertical = painter._isVertical;
     return true;
@@ -2601,8 +2609,7 @@ class _ThumbDragGestureRecognizer extends PanGestureRecognizer {
     final mainAxisMoved = _isVertical ? _movedDelta.dy : _movedDelta.dx;
     final grabSlop = computeHitSlop(pointerDeviceKind, gestureSettings);
     if (mainAxisMoved.abs() <= grabSlop) return false;
-    final canGrabInstantly = _isOnThumb && instantThumbGrab?.call() == true;
-    if (canGrabInstantly) return true;
+    if (_grabsInstantly) return true;
     return _lastMoveTimeStamp - _downTimeStamp >= holdDuration;
   }
 }
@@ -2621,7 +2628,8 @@ class _TrackTapGestureRecognizer extends TapGestureRecognizer {
 
   @override
   bool isPointerAllowed(PointerDownEvent event) {
-    if (trackMode?.call() != ScrollbarTrackMode.jumpToTouch) return false;
+    final trackMode = this.trackMode?.call();
+    if (trackMode == null || !trackMode.jumpsToTouch) return false;
     if (!_hitTestInteractive(_customPaintKey, event.position, event.kind)) {
       return false;
     }
@@ -2654,12 +2662,18 @@ enum ScrollbarTrackMode {
   dragAnywhere(canDragTrack: true),
 
   /// a tap or held drag anywhere on the track jumps the thumb under the touch.
-  jumpToTouch(canDragTrack: true),
+  jumpToTouch(canDragTrack: true, jumpsToTouch: true),
+
+  /// a tap or any drag anywhere on the track jumps the thumb under the touch with no hold.
+  /// list drags starting on the track go to the scrollbar while it shows.
+  instantJump(canDragTrack: true, jumpsToTouch: true, grabsTrackInstantly: true),
   ;
 
   final bool canDragTrack;
+  final bool jumpsToTouch;
+  final bool grabsTrackInstantly;
 
-  const ScrollbarTrackMode({this.canDragTrack = false});
+  const ScrollbarTrackMode({this.canDragTrack = false, this.jumpsToTouch = false, this.grabsTrackInstantly = false});
 }
 
 typedef ScrollbarThumbLabelResolver = String? Function(double scrollFraction);
